@@ -1,0 +1,86 @@
+FROM jupyter/scipy-notebook:feacdbfc2e89
+
+# All commands as root
+USER root
+RUN apt-get update && \
+    apt-get install -y \
+        openssh-server \
+        docker.io \
+        vim \
+        libz-dev \
+        libbz2-dev \
+        liblzma-dev \
+        imagemagick \
+    && apt-get clean
+
+RUN pip --no-cache-dir install --upgrade awscli
+
+RUN conda install mamba
+
+RUN mamba install -y r-tidyverse \
+                     jupyter_contrib_nbextensions \
+                     jupyter_nbextensions_configurator \
+    && mamba  clean -afy
+
+# Calysto extensions (classic notebook)
+RUN git clone https://github.com/Calysto/notebook-extensions.git \
+    && cd notebook-extensions \
+    && jupyter nbextension install calysto --system \
+    && jupyter nbextension enable calysto/document-tools/main
+
+# Generic set of extentions (classic notebook)
+RUN jupyter contrib nbextension install --system \
+    && jupyter nbextensions_configurator enable --user
+
+# Jupyterlab extensions
+RUN jupyter labextension install @jupyterlab/toc --no-build \
+    && jupyter labextension install @aquirdturtle/collapsible_headings --no-build \
+    && jupyter lab build \
+    && jupyter lab clean \
+    && npm cache clean --force  \
+    && rm -rf /home/$NB_USER/.cache/yarn \
+    && rm -rf /home/$NB_USER/.node-gyp \
+    && fix-permissions $CONDA_DIR \
+    && fix-permissions /home/$NB_USER
+
+# Analysis specific tools
+RUN mamba install -y conda-forge::r-seurat=3.2.2 \
+                     leidenalg \
+    && mamba clean -afy
+
+RUN pip install scanpy \
+                anndata2ri \
+                cmake \
+                MulticoreTSNE
+
+
+# Adding additional packages at the end so no need to rebuild all layers
+RUN mamba install biopython
+
+RUN R -e "install.packages('gam', repos='https://lib.ugent.be/CRAN/')"
+
+RUN R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) \
+          install.packages("BiocManager", repos="https://lib.ugent.be/CRAN/")' \
+    && R -e 'BiocManager::install("DropletUtils")' \
+    && R -e 'BiocManager::install("scran")' \
+    && R -e 'BiocManager::install("slingshot")' \
+    && R -e 'BiocManager::install("monocle")' \
+    && R -e 'BiocManager::install("clusterExperiment")' \
+    && R -e 'BiocManager::install("MAST")' \
+    && R -e 'BiocManager::install("DESeq2")'
+
+RUN pip install wget
+
+RUN mamba install -c bioconda bioconductor-scone
+
+RUN mamba install -c bioconda bioconductor-scater
+
+RUN mamba install -c r r-irkernel
+
+RUN mamba install -c r r-repr
+
+RUN mamba install -c conda-forge r-ggpubr
+# switch back to jovyan
+#USER jovyan
+ENTRYPOINT ["/bin/bash"]
+10:19
